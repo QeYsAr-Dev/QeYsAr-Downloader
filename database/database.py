@@ -69,20 +69,27 @@ ON users(last_activity);
 """
 
 
-async def init_db(database_path: str | Path | None = None) -> None:
-    database_file = Path(
-        database_path
-    ) if database_path else settings.database_file
+async def init_db(
+    database_path: str | Path | None = None,
+) -> None:
+    database_file = (
+        Path(database_path)
+        if database_path
+        else settings.database_file
+    )
 
     database_file.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    async with aiosqlite.connect(database_file) as db:
-        await db.executescript(SCHEMA)
+    async with aiosqlite.connect(
+        database_file
+    ) as db:
+        await db.executescript(
+            SCHEMA
+        )
 
-        # Migration-safe additions for an existing database.
         columns_cursor = await db.execute(
             "PRAGMA table_info(users)"
         )
@@ -96,7 +103,8 @@ async def init_db(database_path: str | Path | None = None) -> None:
             await db.execute(
                 """
                 ALTER TABLE users
-                ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0
+                ADD COLUMN is_banned
+                INTEGER NOT NULL DEFAULT 0
                 """
             )
 
@@ -104,7 +112,8 @@ async def init_db(database_path: str | Path | None = None) -> None:
             await db.execute(
                 """
                 ALTER TABLE users
-                ADD COLUMN is_limited INTEGER NOT NULL DEFAULT 0
+                ADD COLUMN is_limited
+                INTEGER NOT NULL DEFAULT 0
                 """
             )
 
