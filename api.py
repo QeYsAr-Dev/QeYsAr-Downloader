@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -97,6 +97,17 @@ async def lifespan(
         bot,
         dispatcher,
     )
+
+    webhook_url = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "").strip()
+
+    if webhook_url:
+        await bot.set_webhook(
+            url=f"{webhook_url}/telegram/webhook",
+            secret_token=webhook_secret or None,
+            drop_pending_updates=True,
+        )
+        logger.info("Telegram webhook configured: %s/telegram/webhook", webhook_url)
 
     logger.info(
         "QeYsAr Downloader API started."
