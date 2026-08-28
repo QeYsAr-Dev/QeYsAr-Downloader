@@ -1,0 +1,19 @@
+﻿services:
+  downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - downloader_data:/app/downloads
+      - downloader_logs:/app/logs
+
+volumes:
+  downloader_data:
+  downloader_logs:
