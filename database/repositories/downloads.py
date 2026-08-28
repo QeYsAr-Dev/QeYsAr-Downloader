@@ -1,8 +1,6 @@
 ﻿from datetime import datetime, timezone
 
-import aiosqlite
-
-from config import settings
+from database.database import connect
 
 
 def utc_now() -> str:
@@ -15,7 +13,7 @@ async def create_download(
     platform: str | None,
     status: str,
 ) -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO downloads (
@@ -26,6 +24,7 @@ async def create_download(
                 created_at
             )
             VALUES (?, ?, ?, ?, ?)
+            RETURNING id
             """,
             (
                 user_id,
@@ -36,9 +35,16 @@ async def create_download(
             ),
         )
 
+        row = await cursor.fetchone()
+
         await db.commit()
 
-        return int(cursor.lastrowid)
+        if row is None:
+            raise RuntimeError(
+                "Failed to create download record."
+            )
+
+        return int(row[0])
 
 
 async def update_download(
@@ -58,7 +64,7 @@ async def update_download(
         else None
     )
 
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             UPDATE downloads
@@ -87,9 +93,7 @@ async def get_user_history(
     user_id: int,
     limit: int = 10,
 ):
-    async with aiosqlite.connect(settings.database_file) as db:
-        db.row_factory = aiosqlite.Row
-
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT *
@@ -111,9 +115,7 @@ async def find_existing_url(
     user_id: int,
     url: str,
 ):
-    async with aiosqlite.connect(settings.database_file) as db:
-        db.row_factory = aiosqlite.Row
-
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT *

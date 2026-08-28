@@ -1,8 +1,7 @@
 ﻿from datetime import datetime, timezone
 
-import aiosqlite
-
 from config import settings
+from database.database import connect
 
 
 def utc_now() -> str:
@@ -15,9 +14,7 @@ async def add_log(
     user_id: int | None = None,
     message: str | None = None,
 ) -> None:
-    async with aiosqlite.connect(
-        settings.database_file
-    ) as db:
+    async with connect() as db:
         await db.execute(
             """
             INSERT INTO logs (
@@ -44,9 +41,7 @@ async def add_log(
 async def get_recent_logs(
     limit: int = 20,
 ) -> list[tuple]:
-    async with aiosqlite.connect(
-        settings.database_file
-    ) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT

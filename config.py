@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     bot_token: str = ""
     admin_id: int = 0
 
-    database_path: str = "/tmp/qeysar-downloader.db"
+    database_url: str = ""
+
+    database_path: str = "./downloads.db"
 
     max_file_size_mb: int = 50
     daily_download_limit: int = 10
@@ -19,8 +21,8 @@ class Settings(BaseSettings):
     download_timeout: int = 300
     download_retries: int = 2
 
-    temp_download_dir: str = "/tmp/qeysar-downloads"
-    log_dir: str = "/tmp/qeysar-logs"
+    temp_download_dir: str = "./downloads"
+    log_dir: str = "./logs"
 
     rate_limit_requests: int = 5
     rate_limit_window_seconds: int = 10

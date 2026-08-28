@@ -1,19 +1,24 @@
-﻿import aiosqlite
+﻿from datetime import datetime, timezone
 
 from config import settings
+from database.database import connect
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def get_all_user_ids(
     include_banned: bool = False,
 ) -> list[int]:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         if include_banned:
             cursor = await db.execute(
                 """
                 SELECT user_id
                 FROM users
                 ORDER BY user_id
-                """
+                """,
             )
         else:
             cursor = await db.execute(
@@ -22,7 +27,7 @@ async def get_all_user_ids(
                 FROM users
                 WHERE is_banned = 0
                 ORDER BY user_id
-                """
+                """,
             )
 
         rows = await cursor.fetchall()
@@ -31,7 +36,7 @@ async def get_all_user_ids(
 
 
 async def get_user_count() -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -45,7 +50,7 @@ async def get_user_count() -> int:
 
 
 async def get_banned_user_count() -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -60,7 +65,7 @@ async def get_banned_user_count() -> int:
 
 
 async def get_limited_user_count() -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -75,7 +80,7 @@ async def get_limited_user_count() -> int:
 
 
 async def get_download_counts_by_status() -> list[tuple[str, int]]:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT

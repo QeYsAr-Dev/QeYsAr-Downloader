@@ -1,8 +1,6 @@
 ﻿from datetime import datetime, timezone
 
-import aiosqlite
-
-from config import settings
+from database.database import connect
 
 
 def utc_now() -> str:
@@ -10,14 +8,15 @@ def utc_now() -> str:
 
 
 async def ensure_admin(user_id: int) -> None:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
-            INSERT OR IGNORE INTO admins (
+            INSERT INTO admins (
                 user_id,
                 created_at
             )
             VALUES (?, ?)
+            ON CONFLICT(user_id) DO NOTHING
             """,
             (
                 user_id,
@@ -29,7 +28,7 @@ async def ensure_admin(user_id: int) -> None:
 
 
 async def is_admin(user_id: int) -> bool:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT 1

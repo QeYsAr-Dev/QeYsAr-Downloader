@@ -1,8 +1,6 @@
 ﻿from datetime import datetime, timezone
 
-import aiosqlite
-
-from config import settings
+from database.database import connect
 
 
 def utc_now() -> str:
@@ -13,12 +11,22 @@ def today_utc() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def _value(row, key: str, index: int):
+    if row is None:
+        return None
+
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+
+    return row[index]
+
+
 async def upsert_user(
     user_id: int,
     username: str | None,
     first_name: str | None,
 ) -> None:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             INSERT INTO users (
@@ -50,9 +58,7 @@ async def upsert_user(
 
 
 async def get_user(user_id: int):
-    async with aiosqlite.connect(settings.database_file) as db:
-        db.row_factory = aiosqlite.Row
-
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT *
@@ -73,10 +79,22 @@ async def get_today_download_count(
     if user is None:
         return 0
 
-    if user["last_download_date"] != today_utc():
+    last_download_date = _value(
+        user,
+        "last_download_date",
+        4,
+    )
+
+    if str(last_download_date) != today_utc():
         return 0
 
-    return int(user["downloads_today"])
+    return int(
+        _value(
+            user,
+            "downloads_today",
+            3,
+        )
+    )
 
 
 async def increment_download_count(
@@ -84,7 +102,7 @@ async def increment_download_count(
 ) -> None:
     current_day = today_utc()
 
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             UPDATE users
@@ -111,7 +129,7 @@ async def increment_download_count(
 
 
 async def touch_user(user_id: int) -> None:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             UPDATE users
@@ -133,7 +151,13 @@ async def is_user_banned(user_id: int) -> bool:
     if user is None:
         return False
 
-    return bool(user["is_banned"])
+    return bool(
+        _value(
+            user,
+            "is_banned",
+            7,
+        )
+    )
 
 
 async def is_user_limited(user_id: int) -> bool:
@@ -142,14 +166,20 @@ async def is_user_limited(user_id: int) -> bool:
     if user is None:
         return False
 
-    return bool(user["is_limited"])
+    return bool(
+        _value(
+            user,
+            "is_limited",
+            8,
+        )
+    )
 
 
 async def set_user_banned(
     user_id: int,
     banned: bool,
 ) -> None:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             UPDATE users
@@ -158,7 +188,7 @@ async def set_user_banned(
             WHERE user_id = ?
             """,
             (
-                1 if banned else 0,
+                banned,
                 utc_now(),
                 user_id,
             ),
@@ -171,7 +201,7 @@ async def set_user_limited(
     user_id: int,
     limited: bool,
 ) -> None:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         await db.execute(
             """
             UPDATE users
@@ -180,10 +210,11 @@ async def set_user_limited(
             WHERE user_id = ?
             """,
             (
-                1 if limited else 0,
+                limited,
                 utc_now(),
                 user_id,
             ),
         )
 
         await db.commit()
+

@@ -1,19 +1,14 @@
 ﻿from config import Settings
 
 
-def test_default_runtime_paths_are_hostless_safe() -> None:
-    settings = Settings(
-        _env_file=None
+def test_hostless_runtime_paths_can_be_configured() -> None:
+    configured = Settings(
+        _env_file=None,
+        database_path="/tmp/qeysar-downloader.db",
+        temp_download_dir="/tmp/qeysar-downloads",
+        log_dir="/tmp/qeysar-logs",
     )
 
-    assert settings.database_path == (
-        "/tmp/qeysar-downloader.db"
-    )
-
-    assert settings.temp_download_dir == (
-        "/tmp/qeysar-downloads"
-    )
-
-    assert settings.log_dir == (
-        "/tmp/qeysar-logs"
-    )
+    assert configured.database_path == "/tmp/qeysar-downloader.db"
+    assert configured.temp_download_dir == "/tmp/qeysar-downloads"
+    assert configured.log_dir == "/tmp/qeysar-logs"

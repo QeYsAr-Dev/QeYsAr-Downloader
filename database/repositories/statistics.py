@@ -1,8 +1,6 @@
 ﻿from datetime import datetime, timedelta, timezone
 
-import aiosqlite
-
-from config import settings
+from database.database import connect
 
 
 def utc_now() -> datetime:
@@ -10,7 +8,7 @@ def utc_now() -> datetime:
 
 
 async def get_total_users() -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -30,7 +28,7 @@ async def get_active_users(
         utc_now() - timedelta(hours=hours)
     ).isoformat()
 
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -46,7 +44,7 @@ async def get_active_users(
 
 
 async def get_total_downloads() -> int:
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -67,7 +65,7 @@ async def get_downloads_since(
         utc_now() - timedelta(hours=hours)
     ).isoformat()
 
-    async with aiosqlite.connect(settings.database_file) as db:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT COUNT(*)
@@ -83,9 +81,8 @@ async def get_downloads_since(
     return int(row[0]) if row else 0
 
 
-async def get_platform_statistics(
-) -> list[tuple[str, int]]:
-    async with aiosqlite.connect(settings.database_file) as db:
+async def get_platform_statistics() -> list[tuple[str, int]]:
+    async with connect() as db:
         cursor = await db.execute(
             """
             SELECT
