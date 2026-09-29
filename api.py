@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -169,6 +169,7 @@ async def telegram_webhook(
     request: Request,
     x_webhook_secret: str | None = Header(
         default=None,
+        alias="X-Telegram-Bot-Api-Secret-Token",
     ),
 ) -> dict[str, object]:
     expected_secret = os.getenv(
@@ -226,3 +227,5 @@ async def telegram_webhook(
             status_code=500,
             detail=f"Webhook processing failed: {str(exc)[:300]}",
         ) from exc
+
+

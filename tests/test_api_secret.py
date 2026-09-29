@@ -49,7 +49,7 @@ def test_webhook_rejects_invalid_secret(
         response = client.post(
             "/telegram/webhook",
             headers={
-                "X-Webhook-Secret": "wrong-secret",
+                "X-Telegram-Bot-Api-Secret-Token": "wrong-secret",
             },
             json={
                 "update_id": 999,
@@ -83,7 +83,7 @@ def test_webhook_accepts_valid_secret(
         response = client.post(
             "/telegram/webhook",
             headers={
-                "X-Webhook-Secret": "correct-secret",
+                "X-Telegram-Bot-Api-Secret-Token": "correct-secret",
             },
             json={
                 "update_id": 999,
@@ -97,3 +97,4 @@ def test_webhook_accepts_valid_secret(
     finally:
         api.bot = original_bot
         api.dispatcher = original_dispatcher
+
