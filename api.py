@@ -1,4 +1,5 @@
 ﻿import logging
+import hmac
 import os
 from contextlib import asynccontextmanager
 
@@ -167,22 +168,30 @@ async def ready() -> dict[str, str]:
 @app.post("/telegram/webhook")
 async def telegram_webhook(
     request: Request,
-    x_webhook_secret: str | None = Header(
-        default=None,
-        alias="X-Telegram-Bot-Api-Secret-Token",
-    ),
 ) -> dict[str, object]:
     expected_secret = os.getenv(
         "WEBHOOK_SECRET",
         "",
-    )
+    ).strip()
 
-    if expected_secret:
-        if x_webhook_secret != expected_secret:
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid webhook secret.",
-            )
+    received_secret = request.headers.get(
+        "X-Telegram-Bot-Api-Secret-Token",
+        "",
+    ).strip()
+
+    if expected_secret and not hmac.compare_digest(
+        received_secret,
+        expected_secret,
+    ):
+        logger.warning(
+            "Invalid Telegram webhook secret: expected_length=%d received_length=%d",
+            len(expected_secret),
+            len(received_secret),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid webhook secret.",
+        )
 
     if bot is None or dispatcher is None:
         raise HTTPException(
@@ -208,7 +217,7 @@ async def telegram_webhook(
             )
 
         await telegram.process_update(
-            update_data
+            update_data,
         )
 
         return {
@@ -220,12 +229,10 @@ async def telegram_webhook(
 
     except Exception as exc:
         logger.exception(
-            "Telegram webhook processing failed."
+            "Telegram webhook processing failed.",
         )
 
         raise HTTPException(
             status_code=500,
             detail=f"Webhook processing failed: {str(exc)[:300]}",
         ) from exc
-
-
