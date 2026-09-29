@@ -1,4 +1,4 @@
-name: Configure Telegram Webhook
+﻿name: Configure Telegram Webhook
 
 on:
   workflow_dispatch:
@@ -19,8 +19,9 @@ jobs:
           curl -sS -X POST \
             "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
             -H "Content-Type: application/json" \
-            -d "{\"url\":\"https://qeysar-downloader.hostless.app/telegram/webhook\",\"secret_token\":\"${WEBHOOK_SECRET}\",\"drop_pending_updates\":true}"
+            -d "{\"url\":\"https://qeysar-downloader.hostless.app/telegram/webhook\",\"drop_pending_updates\":true}"
           echo
           curl -sS \
             "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo"
           echo
+

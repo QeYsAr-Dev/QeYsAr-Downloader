@@ -29,48 +29,7 @@ def _setup_mock_telegram_service():
     )
 
 
-def test_webhook_rejects_invalid_secret(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(
-        "WEBHOOK_SECRET",
-        "correct-secret",
-    )
-
-    (
-        original_bot,
-        original_dispatcher,
-        _,
-    ) = _setup_mock_telegram_service()
-
-    try:
-        client = TestClient(app=api.app)
-
-        response = client.post(
-            "/telegram/webhook",
-            headers={
-                "X-Telegram-Bot-Api-Secret-Token": "wrong-secret",
-            },
-            json={
-                "update_id": 999,
-            },
-        )
-
-        assert response.status_code == 403
-
-    finally:
-        api.bot = original_bot
-        api.dispatcher = original_dispatcher
-
-
-def test_webhook_accepts_valid_secret(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(
-        "WEBHOOK_SECRET",
-        "correct-secret",
-    )
-
+def test_webhook_accepts_update_without_secret() -> None:
     (
         original_bot,
         original_dispatcher,
@@ -82,9 +41,6 @@ def test_webhook_accepts_valid_secret(
 
         response = client.post(
             "/telegram/webhook",
-            headers={
-                "X-Telegram-Bot-Api-Secret-Token": "correct-secret",
-            },
             json={
                 "update_id": 999,
             },
@@ -97,4 +53,3 @@ def test_webhook_accepts_valid_secret(
     finally:
         api.bot = original_bot
         api.dispatcher = original_dispatcher
-

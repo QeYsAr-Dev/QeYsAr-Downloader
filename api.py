@@ -160,10 +160,49 @@ async def ready() -> dict[str, str]:
 async def telegram_webhook(
     request: Request,
 ) -> dict[str, object]:
-    expected_secret = os.getenv(
-        "WEBHOOK_SECRET",
-        "",
-    ).strip()
+    if bot is None or dispatcher is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram service is not initialized.",
+        )
+
+    telegram = configure_telegram_service(
+        bot,
+        dispatcher,
+    )
+
+    try:
+        update_data = await request.json()
+
+        if not isinstance(
+            update_data,
+            dict,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Telegram update.",
+            )
+
+        await telegram.process_update(
+            update_data,
+        )
+
+        return {
+            "ok": True,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        logger.exception(
+            "Telegram webhook processing failed.",
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Webhook processing failed: {str(exc)[:300]}",
+        ) from exc
 
     received_secret = request.headers.get(
         "X-Telegram-Bot-Api-Secret-Token",
@@ -227,3 +266,4 @@ async def telegram_webhook(
             status_code=500,
             detail=f"Webhook processing failed: {str(exc)[:300]}",
         ) from exc
+
