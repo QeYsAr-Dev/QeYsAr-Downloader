@@ -99,16 +99,7 @@ async def lifespan(
         dispatcher,
     )
 
-    webhook_url = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
-    webhook_secret = os.getenv("WEBHOOK_SECRET", "").strip()
-
-    if webhook_url:
-        await bot.set_webhook(
-            url=f"{webhook_url}/telegram/webhook",
-            secret_token=webhook_secret or None,
-            drop_pending_updates=True,
-        )
-        logger.info("Telegram webhook configured: %s/telegram/webhook", webhook_url)
+    logger.info("Telegram webhook is managed by GitHub Actions.")
 
     logger.info(
         "QeYsAr Downloader API started."
