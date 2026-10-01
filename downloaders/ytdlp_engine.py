@@ -22,6 +22,8 @@ if os.getenv("YOUTUBE_COOKIES_CONTENT"):
     Path("/tmp/youtube_cookies.txt").write_text(
         os.getenv("YOUTUBE_COOKIES_CONTENT"),
         encoding="utf-8"
+    ),
+        encoding="utf-8"
     )
 
 
@@ -95,8 +97,8 @@ class YTDLPEngine:
 
             # Optional cookies support for blocked platforms like YouTube.
             **(
-                {"cookiefile": os.getenv("YOUTUBE_COOKIES_FILE")}
-                if os.getenv("YOUTUBE_COOKIES_FILE")
+                {"cookiefile": os.getenv("YOUTUBE_COOKIES_FILE") or "/tmp/youtube_cookies.txt"}
+                if os.getenv("YOUTUBE_COOKIES_FILE") or os.getenv("YOUTUBE_COOKIES_CONTENT")
                 else {}
             ),
 
@@ -352,6 +354,7 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
 
 
 
