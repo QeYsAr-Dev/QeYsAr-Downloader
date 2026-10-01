@@ -87,6 +87,13 @@ class YTDLPEngine:
                 }
             },
 
+            # Optional cookies support for blocked platforms like YouTube.
+            **(
+                {"cookiefile": os.getenv("YOUTUBE_COOKIES_FILE")}
+                if os.getenv("YOUTUBE_COOKIES_FILE")
+                else {}
+            ),
+
             # Avoid partial leftovers where possible.
             "nopart": False,
         }
