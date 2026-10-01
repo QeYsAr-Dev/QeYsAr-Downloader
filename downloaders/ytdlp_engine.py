@@ -18,11 +18,7 @@ from downloaders.models import (
 
 logger = logging.getLogger(__name__)
 
-# COOKIE DEBUG
-logger.warning("COOKIE DEBUG FILE=%s", os.getenv("YOUTUBE_COOKIES_FILE"))
-logger.warning("COOKIE DEBUG CONTENT=%s", bool(os.getenv("YOUTUBE_COOKIES_CONTENT")))
-if os.getenv("YOUTUBE_COOKIES_FILE"):
-    logger.warning("COOKIE DEBUG EXISTS=%s", Path(os.getenv("YOUTUBE_COOKIES_FILE")).exists())
+
 
 if os.getenv("YOUTUBE_COOKIES_CONTENT"):
     Path("/tmp/youtube_cookies.txt").write_text(
@@ -360,6 +356,7 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
 
 
 
