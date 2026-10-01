@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 import os
 import re
@@ -17,6 +17,12 @@ from downloaders.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+if os.getenv("YOUTUBE_COOKIES_CONTENT"):
+    Path("/tmp/youtube_cookies.txt").write_text(
+        os.getenv("YOUTUBE_COOKIES_CONTENT"),
+        encoding="utf-8"
+    )
 
 
 class YTDLPEngine:
@@ -346,3 +352,10 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
+
+
+
+
+
+
