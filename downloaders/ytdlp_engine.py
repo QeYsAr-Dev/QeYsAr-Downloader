@@ -80,6 +80,13 @@ class YTDLPEngine:
             # Do not write yt-dlp cache into the project.
             "cachedir": False,
 
+            # Improve YouTube compatibility with modern clients.
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"]
+                }
+            },
+
             # Avoid partial leftovers where possible.
             "nopart": False,
         }
