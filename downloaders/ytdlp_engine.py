@@ -24,11 +24,7 @@ if os.getenv("YOUTUBE_COOKIES_CONTENT"):
     Path("/tmp/youtube_cookies.txt").write_text(
         os.getenv("YOUTUBE_COOKIES_CONTENT"),
         encoding="utf-8"
-    ),
-        encoding="utf-8"
     )
-
-
 class YTDLPEngine:
     """
     Shared yt-dlp based engine.
@@ -356,6 +352,7 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
 
 
 
