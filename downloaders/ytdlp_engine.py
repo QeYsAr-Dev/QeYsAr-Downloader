@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 import os
 import re
@@ -137,6 +137,13 @@ class YTDLPEngine:
             # Avoid partial leftovers where possible.
             "nopart": False,
         }
+
+        logger.info(
+            "yt-dlp cookie option active=%s path=%s exists=%s",
+            "cookiefile" in options,
+            options.get("cookiefile"),
+            Path(options.get("cookiefile", "")).exists() if options.get("cookiefile") else False,
+        )
 
         try:
             await asyncio.wait_for(
@@ -386,6 +393,7 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
 
 
 
