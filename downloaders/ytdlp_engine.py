@@ -33,7 +33,7 @@ def prepare_youtube_cookies() -> None:
 
     if cookies_b64:
         Path(COOKIE_PATH).write_bytes(
-            base64.b64decode(cookies_b64)
+            base64.b64decode(cookies_b64 + '=' * (-len(cookies_b64) % 4))
         )
         return
 
@@ -393,6 +393,7 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
+
 
 
 
