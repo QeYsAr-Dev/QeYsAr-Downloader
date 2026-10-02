@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -19,12 +20,33 @@ from downloaders.models import (
 logger = logging.getLogger(__name__)
 
 
+COOKIE_PATH = str(
+    Path(tempfile.gettempdir())
+    / "youtube_cookies.txt"
+)
 
-if os.getenv("YOUTUBE_COOKIES_CONTENT"):
-    Path("/tmp/youtube_cookies.txt").write_text(
-        os.getenv("YOUTUBE_COOKIES_CONTENT"),
-        encoding="utf-8"
-    )
+
+def prepare_youtube_cookies() -> None:
+    import base64
+
+    cookies_b64 = os.getenv("YOUTUBE_COOKIES_BASE64")
+
+    if cookies_b64:
+        Path(COOKIE_PATH).write_bytes(
+            base64.b64decode(cookies_b64)
+        )
+        return
+
+    cookies_content = os.getenv("YOUTUBE_COOKIES_CONTENT")
+
+    if cookies_content:
+        Path(COOKIE_PATH).write_text(
+            cookies_content,
+            encoding="utf-8",
+        )
+
+
+prepare_youtube_cookies()
 class YTDLPEngine:
     """
     Shared yt-dlp based engine.
@@ -95,8 +117,12 @@ class YTDLPEngine:
 
             # Optional cookies support for blocked platforms like YouTube.
             **(
-                {"cookiefile": "/tmp/youtube_cookies.txt"}
-                if os.getenv("YOUTUBE_COOKIES_FILE") or os.getenv("YOUTUBE_COOKIES_CONTENT")
+                {"cookiefile": COOKIE_PATH}
+                if (
+                    os.getenv("YOUTUBE_COOKIES_FILE")
+                    or os.getenv("YOUTUBE_COOKIES_CONTENT")
+                    or os.getenv("YOUTUBE_COOKIES_BASE64")
+                )
                 else {}
             ),
 
