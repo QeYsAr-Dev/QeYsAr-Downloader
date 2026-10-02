@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import os
 import re
@@ -47,6 +47,14 @@ def prepare_youtube_cookies() -> None:
 
 
 prepare_youtube_cookies()
+
+logger.info(
+    "YouTube cookie runtime check: present=%s size=%s path=%s",
+    Path(COOKIE_PATH).exists(),
+    Path(COOKIE_PATH).stat().st_size if Path(COOKIE_PATH).exists() else 0,
+    COOKIE_PATH,
+)
+
 class YTDLPEngine:
     """
     Shared yt-dlp based engine.
