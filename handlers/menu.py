@@ -1,4 +1,4 @@
-﻿from aiogram import F, Router
+from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 router = Router()
@@ -10,7 +10,7 @@ async def download_help_callback(
 ) -> None:
     if callback.message:
         await callback.message.answer(
-            "📥 لینک YouTube، Instagram، TikTok یا Pinterest "
+            "📥 لینک Instagram، TikTok یا Pinterest "
             "را ارسال کنید."
         )
 

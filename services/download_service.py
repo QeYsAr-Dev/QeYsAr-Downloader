@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from pathlib import Path
 
 from aiogram.types import FSInputFile, Message
@@ -78,7 +78,7 @@ class DownloadService:
         if platform is None:
             await message.answer(
                 "❌ <b>این پلتفرم پشتیبانی نمی‌شود.</b>\n\n"
-                "فقط YouTube، Instagram، TikTok و Pinterest."
+                "فقط Instagram، TikTok و Pinterest."
             )
             return
 

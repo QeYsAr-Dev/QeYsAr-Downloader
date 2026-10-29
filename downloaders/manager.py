@@ -1,10 +1,9 @@
-﻿from downloaders.base import BaseDownloader
+from downloaders.base import BaseDownloader
 from downloaders.instagram import InstagramDownloader
 from downloaders.models import DownloadResult, DownloadStatus
 from downloaders.pinterest import PinterestDownloader
 from downloaders.platforms import PlatformDetector
 from downloaders.tiktok import TikTokDownloader
-from downloaders.youtube import YouTubeDownloader
 from downloaders.ytdlp_engine import YTDLPEngine
 
 
@@ -13,7 +12,6 @@ class DownloaderManager:
         engine = YTDLPEngine()
 
         self._downloaders: dict[str, BaseDownloader] = {
-            "youtube": YouTubeDownloader(engine),
             "instagram": InstagramDownloader(engine),
             "tiktok": TikTokDownloader(engine),
             "pinterest": PinterestDownloader(engine),

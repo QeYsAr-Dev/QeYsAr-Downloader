@@ -1,8 +1,6 @@
-﻿import asyncio
+import asyncio
 import logging
-import os
 import re
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -19,41 +17,6 @@ from downloaders.models import (
 
 logger = logging.getLogger(__name__)
 
-
-COOKIE_PATH = str(
-    Path(tempfile.gettempdir())
-    / "youtube_cookies.txt"
-)
-
-
-def prepare_youtube_cookies() -> None:
-    import base64
-
-    cookies_b64 = os.getenv("YOUTUBE_COOKIES_BASE64")
-
-    if cookies_b64:
-        Path(COOKIE_PATH).write_bytes(
-            base64.b64decode(cookies_b64 + '=' * (-len(cookies_b64) % 4))
-        )
-        return
-
-    cookies_content = os.getenv("YOUTUBE_COOKIES_CONTENT")
-
-    if cookies_content:
-        Path(COOKIE_PATH).write_text(
-            cookies_content,
-            encoding="utf-8",
-        )
-
-
-prepare_youtube_cookies()
-
-logger.info(
-    "YouTube cookie runtime check: present=%s size=%s path=%s",
-    Path(COOKIE_PATH).exists(),
-    Path(COOKIE_PATH).stat().st_size if Path(COOKIE_PATH).exists() else 0,
-    COOKIE_PATH,
-)
 
 class YTDLPEngine:
     """
@@ -116,34 +79,10 @@ class YTDLPEngine:
             # Do not write yt-dlp cache into the project.
             "cachedir": False,
 
-            # Improve YouTube compatibility with modern clients.
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "web"]
-                }
-            },
-
-            # Optional cookies support for blocked platforms like YouTube.
-            **(
-                {"cookiefile": COOKIE_PATH}
-                if (
-                    os.getenv("YOUTUBE_COOKIES_FILE")
-                    or os.getenv("YOUTUBE_COOKIES_CONTENT")
-                    or os.getenv("YOUTUBE_COOKIES_BASE64")
-                )
-                else {}
-            ),
-
             # Avoid partial leftovers where possible.
             "nopart": False,
         }
 
-        logger.info(
-            "yt-dlp cookie option active=%s path=%s exists=%s",
-            "cookiefile" in options,
-            options.get("cookiefile"),
-            Path(options.get("cookiefile", "")).exists() if options.get("cookiefile") else False,
-        )
 
         try:
             await asyncio.wait_for(
@@ -393,18 +332,3 @@ class YTDLPEngine:
                 directory.rmdir()
             except OSError:
                 pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

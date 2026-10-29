@@ -1,10 +1,4 @@
-﻿from utils.url import get_platform, is_valid_url
-
-
-def test_youtube() -> None:
-    assert get_platform(
-        "https://youtube.com/watch?v=test"
-    ) == "youtube"
+from utils.url import get_platform, is_valid_url
 
 
 def test_instagram() -> None:

@@ -1,4 +1,4 @@
-﻿from aiogram import Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -11,7 +11,6 @@ async def help_handler(message: Message) -> None:
         "ℹ️ <b>QeYsAr Downloader</b>\n\n"
         "لینک محتوا را مستقیماً برای ربات ارسال کنید.\n\n"
         "<b>پلتفرم‌های پشتیبانی‌شده:</b>\n"
-        "• YouTube\n"
         "• Instagram\n"
         "• TikTok\n"
         "• Pinterest\n\n"

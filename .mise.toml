@@ -1,3 +1,2 @@
-﻿[tools]
+[tools]
 python = "3.13.2"
-deno = "latest"

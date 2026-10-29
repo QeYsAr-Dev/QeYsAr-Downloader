@@ -1,13 +1,7 @@
-﻿from urllib.parse import urlparse
+from urllib.parse import urlparse
 
 
 SUPPORTED_PLATFORMS = {
-    "youtube": {
-        "youtube.com",
-        "www.youtube.com",
-        "m.youtube.com",
-        "youtu.be",
-    },
     "instagram": {
         "instagram.com",
         "www.instagram.com",

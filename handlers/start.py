@@ -1,4 +1,4 @@
-﻿from aiogram import Router
+from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
@@ -24,7 +24,6 @@ async def start_handler(message: Message) -> None:
     await message.answer(
         "🤖 <b>QeYsAr Downloader</b>\n\n"
         "لینک یکی از پلتفرم‌های زیر را ارسال کنید:\n\n"
-        "• YouTube\n"
         "• Instagram\n"
         "• TikTok\n"
         "• Pinterest\n\n"

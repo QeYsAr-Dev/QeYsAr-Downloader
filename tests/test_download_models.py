@@ -1,4 +1,4 @@
-﻿from downloaders.models import (
+from downloaders.models import (
     DownloadResult,
     DownloadStatus,
     DownloadedFile,
@@ -18,13 +18,13 @@ def test_video_result() -> None:
     result = DownloadResult(
         success=True,
         status=DownloadStatus.COMPLETED,
-        platform="youtube",
+        platform="instagram",
         files=[item],
         title="test",
     )
 
     assert result.success is True
     assert result.status == DownloadStatus.COMPLETED
-    assert result.platform == "youtube"
+    assert result.platform == "instagram"
     assert len(result.files) == 1
     assert result.files[0].media_type == MediaType.VIDEO

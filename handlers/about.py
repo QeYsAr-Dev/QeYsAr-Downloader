@@ -1,4 +1,4 @@
-﻿from aiogram import Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -12,7 +12,6 @@ async def about_handler(
     await message.answer(
         "🤖 <b>QeYsAr Downloader</b>\n\n"
         "Telegram Downloader برای:\n"
-        "• YouTube\n"
         "• Instagram\n"
         "• TikTok\n"
         "• Pinterest\n\n"
