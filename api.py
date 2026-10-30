@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import hmac
 import os
 from contextlib import asynccontextmanager
@@ -22,6 +22,7 @@ from handlers.settings import router as settings_router
 from handlers.start import router as start_router
 from handlers.stats import router as stats_router
 from middlewares.rate_limit import RateLimitMiddleware
+from middlewares.force_join import ForceJoinMiddleware
 from middlewares.user_security import (
     UserSecurityMiddleware,
 )
@@ -55,12 +56,28 @@ async def lifespan(
     bot = create_bot()
     dispatcher = create_dispatcher()
 
+    dispatcher.message.outer_middleware(
+        ForceJoinMiddleware()
+    )
+
+    dispatcher.callback_query.outer_middleware(
+        ForceJoinMiddleware()
+    )
+
     dispatcher.message.middleware(
         UserSecurityMiddleware()
     )
 
     dispatcher.message.middleware(
+        ForceJoinMiddleware()
+    )
+
+    dispatcher.message.middleware(
         RateLimitMiddleware()
+    )
+
+    dispatcher.callback_query.middleware(
+        ForceJoinMiddleware()
     )
 
     dispatcher.include_router(

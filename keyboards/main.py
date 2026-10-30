@@ -1,70 +1,55 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 
-def main_menu_keyboard(
-    show_creator: bool = False,
-) -> InlineKeyboardMarkup:
+START_DOWNLOAD = "📥 شروع دانلود"
+MY_STATS = "📊 آمار من"
+HISTORY = "🕘 تاریخچه"
+SETTINGS = "⚙️ تنظیمات"
+HELP = "ℹ️ راهنما"
+ABOUT = "👤 درباره"
+CREATOR_CHANNEL = "📢 کانال سازنده"
+CREATOR_PANEL = "👑 پنل سازنده"
+CLOSE_PANEL = "✖️ بستن پنل"
+
+
+def main_menu_keyboard(show_creator: bool = False) -> ReplyKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(
-                text="📥 شروع دانلود",
-                callback_data="download_help",
-                style="primary",
-            ),
-            InlineKeyboardButton(
-                text="📊 آمار من",
-                callback_data="stats",
-                style="success",
-            ),
+            KeyboardButton(text=START_DOWNLOAD, style="success"),
+            KeyboardButton(text=MY_STATS, style="success"),
         ],
         [
-            InlineKeyboardButton(
-                text="🕘 تاریخچه",
-                callback_data="history",
-            ),
-            InlineKeyboardButton(
-                text="⚙️ تنظیمات",
-                callback_data="settings",
-            ),
+            KeyboardButton(text=HISTORY, style="primary"),
+            KeyboardButton(text=SETTINGS, style="primary"),
         ],
         [
-            InlineKeyboardButton(
-                text="ℹ️ راهنما",
-                callback_data="help",
-            ),
-            InlineKeyboardButton(
-                text="👤 درباره ربات",
-                callback_data="about",
-            ),
+            KeyboardButton(text=HELP, style="primary"),
+            KeyboardButton(text=ABOUT, style="primary"),
         ],
     ]
 
     if show_creator:
         rows.append([
-            InlineKeyboardButton(
-                text="👑 پنل سازنده",
-                callback_data="creator_panel",
-                style="primary",
-            ),
+            KeyboardButton(text=CREATOR_PANEL, style="primary"),
         ])
 
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    rows.extend([
+        [
+            KeyboardButton(text=CREATOR_CHANNEL, style="success"),
+        ],
+        [
+            KeyboardButton(text=CLOSE_PANEL, style="danger"),
+        ],
+    ])
 
-
-def panel_navigation_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔵 پنل اصلی",
-                    callback_data="back_to_main",
-                    style="primary",
-                ),
-                InlineKeyboardButton(
-                    text="✖ بستن",
-                    callback_data="close_panel",
-                    style="danger",
-                ),
-            ],
-        ]
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="یک بخش را از منوی پایین انتخاب کنید...",
     )
+
+
+def panel_navigation_keyboard() -> ReplyKeyboardMarkup:
+    """Backward-compatible helper for older imports."""
+    return main_menu_keyboard()

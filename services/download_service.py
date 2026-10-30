@@ -1,4 +1,5 @@
 import logging
+from html import escape
 from pathlib import Path
 
 from aiogram.types import FSInputFile, Message
@@ -166,7 +167,7 @@ class DownloadService:
             )
 
             status_message = await message.answer(
-                "📥 <b>درخواست شما ثبت شد.</b>\n\n"
+                "📥 <b>درخواست دانلود ثبت شد.</b>\n"
                 f"پلتفرم: <b>{platform}</b>\n"
                 "وضعیت: <b>در حال آماده‌سازی...</b>"
             )
@@ -199,8 +200,8 @@ class DownloadService:
 
                 await progress.update(
                     (
-                        "❌ <b>دانلود انجام نشد.</b>\n\n"
-                        f"{result.error or 'خطای نامشخص'}"
+                        "❌ <b>دانلود انجام نشد.</b>\n"
+                        f"{escape(str(result.error or 'خطای نامشخص'))}"
                     ),
                     force=True,
                 )
@@ -276,8 +277,8 @@ class DownloadService:
 
                     caption = (
                         "✅ <b>QeYsAr Downloader</b>\n"
-                        f"Platform: {platform}\n"
-                        f"File: {index}/{total_files}"
+                        f"🌐 پلتفرم: <b>{escape(str(platform))}</b>\n"
+                        f"📦 فایل: <b>{index}/{total_files}</b>"
                     )
 
                     if downloaded_file.media_type == MediaType.PHOTO:
@@ -310,7 +311,7 @@ class DownloadService:
                     await progress.update(
                         (
                             "❌ <b>فایل قابل ارسال نیست.</b>\n\n"
-                            "حداکثر حجم فایل 50 MB است."
+                            f"حداکثر حجم مجاز هر فایل: <b>{settings.max_file_size_mb} MB</b> است."
                         ),
                         force=True,
                     )
