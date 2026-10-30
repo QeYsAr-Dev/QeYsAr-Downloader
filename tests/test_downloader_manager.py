@@ -1,7 +1,7 @@
 from downloaders.manager import DownloaderManager
 
 
-def test_downloader_manager_supports_four_platforms() -> None:
+def test_downloader_manager_supports_three_platforms() -> None:
     manager = DownloaderManager()
 
     supported = set(manager.supported_platforms())
@@ -51,6 +51,15 @@ def test_downloader_manager_rejects_unknown_platform() -> None:
 
     downloader = manager.get_downloader(
         "https://example.com/file"
+    )
+
+    assert downloader is None
+
+def test_downloader_manager_rejects_youtube() -> None:
+    manager = DownloaderManager()
+
+    downloader = manager.get_downloader(
+        "https://youtube.com/watch?v=test"
     )
 
     assert downloader is None
