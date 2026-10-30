@@ -1,5 +1,3 @@
-﻿from unittest.mock import AsyncMock
-
 from fastapi.testclient import TestClient
 
 import api
@@ -32,37 +30,14 @@ def test_ready_endpoint() -> None:
     assert response.json()["status"] == "ready"
 
 
-def test_webhook_without_secret() -> None:
-    original_bot = api.bot
-    original_dispatcher = api.dispatcher
+def test_webhook_without_configured_secret_is_rejected(monkeypatch) -> None:
+    monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
 
-    try:
-        mock_bot = object()
+    client = TestClient(app=api.app)
 
-        mock_dispatcher = type(
-            "DispatcherStub",
-            (),
-            {
-                "feed_update": AsyncMock(),
-            },
-        )()
+    response = client.post(
+        "/telegram/webhook",
+        json={"update_id": 123},
+    )
 
-        api.bot = mock_bot
-        api.dispatcher = mock_dispatcher
-
-        client = TestClient(app=api.app)
-
-        response = client.post(
-            "/telegram/webhook",
-            json={
-                "update_id": 123,
-            },
-        )
-
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        mock_dispatcher.feed_update.assert_awaited_once()
-
-    finally:
-        api.bot = original_bot
-        api.dispatcher = original_dispatcher
+    assert response.status_code == 503

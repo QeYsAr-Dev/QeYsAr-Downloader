@@ -1,11 +1,16 @@
-﻿from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
 import api
 
 
-def test_webhook_requires_initialized_service() -> None:
+TEST_SECRET = "test-webhook-secret-123"
+
+
+def test_webhook_requires_initialized_service(monkeypatch) -> None:
+    monkeypatch.setenv("WEBHOOK_SECRET", TEST_SECRET)
+
     original_bot = api.bot
     original_dispatcher = api.dispatcher
 
@@ -17,8 +22,9 @@ def test_webhook_requires_initialized_service() -> None:
 
         response = client.post(
             "/telegram/webhook",
-            json={
-                "update_id": 123,
+            json={"update_id": 123},
+            headers={
+                "X-Telegram-Bot-Api-Secret-Token": TEST_SECRET,
             },
         )
 
@@ -29,7 +35,9 @@ def test_webhook_requires_initialized_service() -> None:
         api.dispatcher = original_dispatcher
 
 
-def test_webhook_processes_update_with_mock_service() -> None:
+def test_webhook_processes_update_with_mock_service(monkeypatch) -> None:
+    monkeypatch.setenv("WEBHOOK_SECRET", TEST_SECRET)
+
     original_bot = api.bot
     original_dispatcher = api.dispatcher
 
@@ -51,8 +59,9 @@ def test_webhook_processes_update_with_mock_service() -> None:
 
         response = client.post(
             "/telegram/webhook",
-            json={
-                "update_id": 321,
+            json={"update_id": 321},
+            headers={
+                "X-Telegram-Bot-Api-Secret-Token": TEST_SECRET,
             },
         )
 
