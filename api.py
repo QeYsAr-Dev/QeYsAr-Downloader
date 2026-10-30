@@ -3,7 +3,7 @@ import hmac
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from bot.bot import create_bot, create_dispatcher
@@ -69,15 +69,7 @@ async def lifespan(
     )
 
     dispatcher.message.middleware(
-        ForceJoinMiddleware()
-    )
-
-    dispatcher.message.middleware(
         RateLimitMiddleware()
-    )
-
-    dispatcher.callback_query.middleware(
-        ForceJoinMiddleware()
     )
 
     dispatcher.include_router(
@@ -177,64 +169,28 @@ async def ready() -> dict[str, str]:
 async def telegram_webhook(
     request: Request,
 ) -> dict[str, object]:
-    if bot is None or dispatcher is None:
+    expected_secret = os.getenv(
+        "WEBHOOK_SECRET",
+        "",
+    ).strip()
+
+    if not expected_secret:
+        logger.error("WEBHOOK_SECRET is not configured.")
         raise HTTPException(
             status_code=503,
-            detail="Telegram service is not initialized.",
+            detail="Webhook secret is not configured.",
         )
-
-    telegram = configure_telegram_service(
-        bot,
-        dispatcher,
-    )
-
-    try:
-        update_data = await request.json()
-
-        if not isinstance(
-            update_data,
-            dict,
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid Telegram update.",
-            )
-
-        await telegram.process_update(
-            update_data,
-        )
-
-        return {
-            "ok": True,
-        }
-
-    except HTTPException:
-        raise
-
-    except Exception as exc:
-        logger.exception(
-            "Telegram webhook processing failed.",
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Webhook processing failed: {str(exc)[:300]}",
-        ) from exc
 
     received_secret = request.headers.get(
         "X-Telegram-Bot-Api-Secret-Token",
         "",
     ).strip()
 
-    if expected_secret and not hmac.compare_digest(
+    if not received_secret or not hmac.compare_digest(
         received_secret,
         expected_secret,
     ):
-        logger.warning(
-            "Invalid Telegram webhook secret: expected_length=%d received_length=%d",
-            len(expected_secret),
-            len(received_secret),
-        )
+        logger.warning("Telegram webhook rejected: invalid secret.")
         raise HTTPException(
             status_code=403,
             detail="Invalid webhook secret.",
@@ -254,33 +210,23 @@ async def telegram_webhook(
     try:
         update_data = await request.json()
 
-        if not isinstance(
-            update_data,
-            dict,
-        ):
+        if not isinstance(update_data, dict):
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Telegram update.",
             )
 
-        await telegram.process_update(
-            update_data,
-        )
+        await telegram.process_update(update_data)
 
-        return {
-            "ok": True,
-        }
+        return {"ok": True}
 
     except HTTPException:
         raise
 
     except Exception as exc:
-        logger.exception(
-            "Telegram webhook processing failed.",
-        )
+        logger.exception("Telegram webhook processing failed.")
 
         raise HTTPException(
             status_code=500,
             detail=f"Webhook processing failed: {str(exc)[:300]}",
         ) from exc
-
