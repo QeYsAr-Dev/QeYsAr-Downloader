@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
+import shutil
+import threading
 import uuid
+
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yt_dlp
 
@@ -17,82 +22,302 @@ from downloaders.models import (
 
 logger = logging.getLogger(__name__)
 
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+class DownloadCancelled(Exception):
+    """Raised when a download is cancelled by its owner."""
+
 
 class YTDLPEngine:
-    """
-    Shared yt-dlp based engine.
+    """Shared yt-dlp engine with automatic format and quality handling."""
 
-    The engine is deliberately isolated from Telegram and database
-    logic so that platform-specific downloaders can reuse it.
-    """
+    QUALITY_LIMITS = (240, 360, 480, 720, 1080, 1440)
 
     def __init__(self) -> None:
         self.download_directory = settings.download_directory
         self.download_directory.mkdir(parents=True, exist_ok=True)
 
+        self.ffmpeg_available = shutil.which("ffmpeg") is not None
+
+    async def inspect(self, url: str) -> dict[str, Any]:
+        """Inspect media metadata without downloading media bytes."""
+        return await asyncio.to_thread(self._inspect_sync, url)
+
+    @staticmethod
+    def _inspect_sync(url: str) -> dict[str, Any]:
+        options: dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": False,
+            "cachedir": False,
+            "socket_timeout": settings.download_timeout,
+            "extract_flat": False,
+        }
+
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        if not isinstance(info, dict):
+            raise yt_dlp.utils.DownloadError(
+                "Media information is unavailable."
+            )
+
+        return info
+
+    def available_qualities(
+        self,
+        info: dict[str, Any],
+    ) -> list[int]:
+        """Return quality choices that are usable in this runtime."""
+        formats = info.get("formats") or []
+        heights: set[int] = set()
+
+        for item in formats:
+            if not isinstance(item, dict):
+                continue
+
+            if not self._has_video(item):
+                continue
+
+            if not self.ffmpeg_available and not self._has_audio(item):
+                continue
+
+            heights.add(int(item["height"]))
+
+        top_height = info.get("height")
+
+        if (
+            self._has_video(info)
+            and (
+                self.ffmpeg_available
+                or self._has_audio(info)
+            )
+        ):
+            heights.add(int(top_height))
+
+        return [
+            quality
+            for quality in self.QUALITY_LIMITS
+            if quality in heights
+        ]
+    @staticmethod
+    def _has_video(item: dict[str, Any]) -> bool:
+        codec = item.get("vcodec")
+        height = item.get("height")
+
+        return (
+            codec is not None
+            and codec != "none"
+            and isinstance(height, (int, float))
+            and height > 0
+        )
+
+    @staticmethod
+    def _has_audio(item: dict[str, Any]) -> bool:
+        codec = item.get("acodec")
+        return codec is not None and codec != "none"
+
+    def _select_format(
+        self,
+        info: dict[str, Any],
+        max_height: int | None,
+    ) -> str:
+        """Select the best available format without exceeding 1440p."""
+        requested_limit = max_height or 1440
+
+        allowed_limits = [
+            quality
+            for quality in self.QUALITY_LIMITS
+            if quality <= requested_limit
+        ]
+
+        height_limit = max(allowed_limits, default=1440)
+
+        formats = info.get("formats") or []
+
+        video_formats = [
+            item
+            for item in formats
+            if isinstance(item, dict)
+            and self._has_video(item)
+            and int(item["height"]) <= height_limit
+        ]
+
+        audio_formats = [
+            item
+            for item in formats
+            if isinstance(item, dict)
+            and self._has_audio(item)
+        ]
+
+        progressive_formats = [
+            item
+            for item in video_formats
+            if self._has_audio(item)
+        ]
+
+        if video_formats:
+            if self.ffmpeg_available and audio_formats:
+                return (
+                    f"bestvideo[height<={height_limit}]"
+                    "+bestaudio/"
+                    f"best[height<={height_limit}]"
+                )
+
+            if progressive_formats:
+                return f"best[height<={height_limit}]"
+
+            if not self.ffmpeg_available and audio_formats:
+                raise yt_dlp.utils.DownloadError(
+                    "This link requires FFmpeg to combine separate "
+                    "video and audio streams."
+                )
+
+            return f"best[height<={height_limit}]"
+
+        has_video_formats = any(
+            isinstance(item, dict) and self._has_video(item)
+            for item in formats
+        )
+
+        if has_video_formats:
+            raise yt_dlp.utils.DownloadError(
+                "No video quality is available at or below "
+                f"{height_limit}p."
+            )
+
+        if audio_formats:
+            return "bestaudio/best"
+
+        return "best"
+
     async def download(
         self,
         url: str,
         platform: str,
+        max_height: int | None = None,
+        progress_callback: ProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> DownloadResult:
-        job_id = uuid.uuid4().hex
-        job_directory = self.download_directory / job_id
+        """Download media with automatic format selection and callbacks."""
+        job_directory = self.download_directory / uuid.uuid4().hex
         job_directory.mkdir(parents=True, exist_ok=True)
 
-        output_template = str(
-            job_directory / "%(autonumber)03d_%(title).120s.%(ext)s"
-        )
+        cancel_event = cancel_event or threading.Event()
 
-        options: dict[str, Any] = {
-            "outtmpl": output_template,
+        if cancel_event.is_set():
+            self._cleanup_directory(job_directory)
 
-            # Support media collections/carousels.
-            "noplaylist": False,
-
-            # Keep the console quiet; application logging handles messages.
-            "quiet": True,
-            "no_warnings": True,
-
-            # File names must remain filesystem-safe.
-            "restrictfilenames": True,
-
-            # Do not overwrite files from another job.
-            "overwrites": False,
-            "nooverwrites": True,
-
-            # Network reliability.
-            "retries": settings.download_retries,
-            "fragment_retries": settings.download_retries,
-            "socket_timeout": settings.download_timeout,
-
-            # Hard maximum size for a single remote media item.
-            "max_filesize": settings.max_file_size_bytes,
-
-            # Prefer a single downloadable file where possible.
-            # This avoids requiring FFmpeg during local development.
-            "format": (
-                "best[filesize<=50M]/"
-                "bestvideo[filesize<=50M]+bestaudio[filesize<=50M]/"
-                "best"
-            ),
-
-            # Do not write yt-dlp cache into the project.
-            "cachedir": False,
-
-            # Avoid partial leftovers where possible.
-            "nopart": False,
-        }
-
+            return DownloadResult(
+                success=False,
+                status=DownloadStatus.CANCELLED,
+                platform=platform,
+                error="Download cancelled.",
+            )
 
         try:
-            await asyncio.wait_for(
+            info = await self.inspect(url)
+
+            if cancel_event.is_set():
+                raise DownloadCancelled(
+                    "Download cancelled during inspection."
+                )
+
+            format_selector = self._select_format(
+                info=info,
+                max_height=max_height,
+            )
+
+            output_template = str(
+                job_directory / "%(autonumber)03d_%(title).120s.%(ext)s"
+            )
+
+            def progress_hook(data: dict[str, Any]) -> None:
+                if cancel_event.is_set():
+                    raise DownloadCancelled(
+                        "Download cancelled by user."
+                    )
+
+                if progress_callback is not None:
+                    try:
+                        progress_callback(dict(data))
+                    except Exception:
+                        logger.debug(
+                            "Download progress callback failed.",
+                            exc_info=True,
+                        )
+
+            options: dict[str, Any] = {
+                "outtmpl": output_template,
+                "noplaylist": False,
+                "quiet": True,
+                "no_warnings": True,
+                "restrictfilenames": True,
+                "overwrites": False,
+                "nooverwrites": True,
+                "retries": settings.download_retries,
+                "fragment_retries": settings.download_retries,
+                "socket_timeout": settings.download_timeout,
+                "max_filesize": settings.max_file_size_bytes,
+                "format": format_selector,
+                "cachedir": False,
+                "nopart": False,
+                "progress_hooks": [progress_hook],
+            }
+
+            worker = asyncio.create_task(
                 asyncio.to_thread(
                     self._download_sync,
                     url,
                     options,
-                ),
-                timeout=settings.download_timeout + 30,
+                )
             )
+
+            try:
+                downloaded_info = await asyncio.wait_for(
+                    asyncio.shield(worker),
+                    timeout=settings.download_timeout + 30,
+                )
+
+            except asyncio.TimeoutError:
+                cancel_event.set()
+
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(worker),
+                        timeout=15,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Timed-out download worker did not stop cleanly."
+                    )
+
+                raise
+
+            except asyncio.CancelledError:
+                cancel_event.set()
+
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(worker),
+                        timeout=15,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Cancelled download worker did not stop cleanly."
+                    )
+
+                raise
+
+            if cancel_event.is_set():
+                raise DownloadCancelled(
+                    "Download cancelled by user."
+                )
+
+            if not isinstance(downloaded_info, dict):
+                downloaded_info = info
 
             files = self._collect_files(job_directory)
 
@@ -123,15 +348,14 @@ class YTDLPEngine:
                         file_path.name,
                         size,
                     )
+
                     file_path.unlink(missing_ok=True)
                     continue
-
-                media_type = self._detect_media_type(file_path)
 
                 downloaded_files.append(
                     DownloadedFile(
                         path=str(file_path),
-                        media_type=media_type,
+                        media_type=self._detect_media_type(file_path),
                         size=size,
                         title=file_path.stem,
                         extension=file_path.suffix.lower(),
@@ -145,17 +369,50 @@ class YTDLPEngine:
                     success=False,
                     status=DownloadStatus.REJECTED,
                     platform=platform,
-                    error="All downloaded files exceeded the 50 MB limit.",
+                    error="No file was within the 50 MB limit.",
                 )
 
-            title = downloaded_files[0].title
+            title = (
+                downloaded_info.get("title")
+                or downloaded_files[0].title
+            )
+
+            selected_height = downloaded_info.get("height")
+
+            if selected_height is None:
+                requested_formats = downloaded_info.get(
+                    "requested_formats"
+                ) or []
+
+                for item in requested_formats:
+                    if isinstance(item, dict) and item.get("height"):
+                        selected_height = item["height"]
+                        break
 
             return DownloadResult(
                 success=True,
                 status=DownloadStatus.COMPLETED,
                 platform=platform,
                 files=downloaded_files,
-                title=title,
+                title=str(title) if title else None,
+                duration=downloaded_info.get("duration"),
+                thumbnail=downloaded_info.get("thumbnail"),
+                webpage_url=downloaded_info.get("webpage_url"),
+                selected_height=(
+                    int(selected_height)
+                    if isinstance(selected_height, (int, float))
+                    else None
+                ),
+            )
+
+        except DownloadCancelled:
+            self._cleanup_directory(job_directory)
+
+            return DownloadResult(
+                success=False,
+                status=DownloadStatus.CANCELLED,
+                platform=platform,
+                error="Download cancelled by user.",
             )
 
         except asyncio.TimeoutError:
@@ -171,6 +428,19 @@ class YTDLPEngine:
         except yt_dlp.utils.DownloadError as exc:
             self._cleanup_directory(job_directory)
 
+            if cancel_event.is_set():
+                logger.info(
+                    "yt-dlp download cancelled for platform=%s",
+                    platform,
+                )
+
+                return DownloadResult(
+                    success=False,
+                    status=DownloadStatus.CANCELLED,
+                    platform=platform,
+                    error="Download cancelled by user.",
+                )
+
             logger.warning(
                 "yt-dlp download failed for platform=%s: %s",
                 platform,
@@ -184,8 +454,25 @@ class YTDLPEngine:
                 error=self._sanitize_error(str(exc)),
             )
 
+        except asyncio.CancelledError:
+            self._cleanup_directory(job_directory)
+            raise
+
         except Exception as exc:
             self._cleanup_directory(job_directory)
+
+            if cancel_event.is_set():
+                logger.info(
+                    "Download cancelled after downloader exception for platform=%s",
+                    platform,
+                )
+
+                return DownloadResult(
+                    success=False,
+                    status=DownloadStatus.CANCELLED,
+                    platform=platform,
+                    error="Download cancelled by user.",
+                )
 
             logger.exception(
                 "Unexpected downloader error for platform=%s",
@@ -203,14 +490,14 @@ class YTDLPEngine:
     def _download_sync(
         url: str,
         options: dict[str, Any],
-    ) -> None:
+    ) -> dict[str, Any]:
         with yt_dlp.YoutubeDL(options) as ydl:
-            ydl.download([url])
+            info = ydl.extract_info(url, download=True)
+
+        return info if isinstance(info, dict) else {}
 
     @staticmethod
-    def _collect_files(
-        directory: Path,
-    ) -> list[Path]:
+    def _collect_files(directory: Path) -> list[Path]:
         return sorted(
             (
                 path
@@ -222,9 +509,7 @@ class YTDLPEngine:
         )
 
     @staticmethod
-    def _detect_media_type(
-        file_path: Path,
-    ) -> MediaType:
+    def _detect_media_type(file_path: Path) -> MediaType:
         extension = file_path.suffix.lower()
 
         video_extensions = {
@@ -269,9 +554,7 @@ class YTDLPEngine:
         return MediaType.FILE
 
     @staticmethod
-    def _cleanup_directory(
-        directory: Path,
-    ) -> None:
+    def _cleanup_directory(directory: Path) -> None:
         try:
             if not directory.exists():
                 return
@@ -295,40 +578,28 @@ class YTDLPEngine:
                 pass
 
         except OSError:
-            pass
+            logger.debug(
+                "Could not clean temporary directory: %s",
+                directory,
+                exc_info=True,
+            )
 
     @staticmethod
     def _sanitize_error(error: str) -> str:
-        # Avoid returning excessively long low-level messages.
         cleaned = re.sub(r"\s+", " ", error).strip()
         return cleaned[:700]
 
     @staticmethod
-    def cleanup_result(
-        result: DownloadResult,
-    ) -> None:
-        """
-        Remove all files produced by a download result.
-        """
-        for downloaded_file in result.files:
-            try:
-                Path(downloaded_file.path).unlink(missing_ok=True)
-            except OSError:
-                pass
-
-        parent_directories: set[Path] = set()
-
-        for downloaded_file in result.files:
-            parent_directories.add(
-                Path(downloaded_file.path).parent
-            )
+    def cleanup_result(result: DownloadResult) -> None:
+        """Remove all temporary files from completed download directories."""
+        parent_directories = {
+            Path(downloaded_file.path).parent
+            for downloaded_file in result.files
+        }
 
         for directory in sorted(
             parent_directories,
             key=lambda path: len(path.parts),
             reverse=True,
         ):
-            try:
-                directory.rmdir()
-            except OSError:
-                pass
+            YTDLPEngine._cleanup_directory(directory)
