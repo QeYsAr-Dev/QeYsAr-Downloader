@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import shutil
+import subprocess
 import threading
 import uuid
 
@@ -39,6 +40,7 @@ class YTDLPEngine:
         self.download_directory.mkdir(parents=True, exist_ok=True)
 
         self.ffmpeg_available = shutil.which("ffmpeg") is not None
+        self.ffprobe_path = shutil.which("ffprobe")
 
     async def inspect(self, url: str) -> dict[str, Any]:
         """Inspect media metadata without downloading media bytes."""
@@ -66,11 +68,87 @@ class YTDLPEngine:
 
         return info
 
+    @staticmethod
+    def _height_value(item: dict[str, Any]) -> int | None:
+        value = item.get("height")
+
+        if value is None:
+            return None
+
+        try:
+            height = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+        return height if height > 0 else None
+
+    @staticmethod
+    def _width_value(item: dict[str, Any]) -> int | None:
+        value = item.get("width")
+
+        if value is None:
+            return None
+
+        try:
+            width = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+        return width if width > 0 else None
+
+    @classmethod
+    def _has_video(cls, item: dict[str, Any]) -> bool:
+        codec = item.get("vcodec")
+
+        if isinstance(codec, str) and codec.lower() == "none":
+            return False
+
+        if codec is not None and str(codec).strip():
+            return True
+
+        return (
+            cls._height_value(item) is not None
+            or cls._width_value(item) is not None
+        )
+
+    @staticmethod
+    def _has_audio(item: dict[str, Any]) -> bool:
+        codec = item.get("acodec")
+
+        return (
+            codec is not None
+            and str(codec).strip().lower() != "none"
+        )
+
+    @classmethod
+    def _height_limit(cls, max_height: int | None) -> int:
+        try:
+            requested_limit = (
+                int(max_height)
+                if max_height is not None
+                else 1440
+            )
+        except (TypeError, ValueError, OverflowError):
+            requested_limit = 1440
+
+        if requested_limit <= 0:
+            requested_limit = 1440
+
+        requested_limit = min(requested_limit, 1440)
+
+        allowed_limits = [
+            quality
+            for quality in cls.QUALITY_LIMITS
+            if quality <= requested_limit
+        ]
+
+        return max(allowed_limits, default=cls.QUALITY_LIMITS[0])
+
     def available_qualities(
         self,
         info: dict[str, Any],
     ) -> list[int]:
-        """Return quality choices that are usable in this runtime."""
+        """Return known quality choices without requiring codec metadata."""
         formats = info.get("formats") or []
         heights: set[int] = set()
 
@@ -81,118 +159,112 @@ class YTDLPEngine:
             if not self._has_video(item):
                 continue
 
-            if not self.ffmpeg_available and not self._has_audio(item):
+            if (
+                not self.ffmpeg_available
+                and item.get("acodec") == "none"
+            ):
                 continue
 
-            heights.add(int(item["height"]))
+            height = self._height_value(item)
 
-        top_height = info.get("height")
+            if height is not None:
+                heights.add(height)
 
-        if (
-            self._has_video(info)
-            and (
+        if self._has_video(info):
+            if (
                 self.ffmpeg_available
-                or self._has_audio(info)
-            )
-        ):
-            heights.add(int(top_height))
+                or info.get("acodec") != "none"
+            ):
+                top_height = self._height_value(info)
+
+                if top_height is not None:
+                    heights.add(top_height)
 
         return [
             quality
             for quality in self.QUALITY_LIMITS
             if quality in heights
         ]
-    @staticmethod
-    def _has_video(item: dict[str, Any]) -> bool:
-        codec = item.get("vcodec")
-        height = item.get("height")
-
-        return (
-            codec is not None
-            and codec != "none"
-            and isinstance(height, (int, float))
-            and height > 0
-        )
-
-    @staticmethod
-    def _has_audio(item: dict[str, Any]) -> bool:
-        codec = item.get("acodec")
-        return codec is not None and codec != "none"
 
     def _select_format(
         self,
         info: dict[str, Any],
         max_height: int | None,
     ) -> str:
-        """Select the best available format without exceeding 1440p."""
-        requested_limit = max_height or 1440
+        """Build a platform-independent adaptive yt-dlp format selector."""
+        height_limit = self._height_limit(max_height)
+        height_filter = f"[height<=?{height_limit}]"
 
-        allowed_limits = [
-            quality
-            for quality in self.QUALITY_LIMITS
-            if quality <= requested_limit
+        formats = [
+            item
+            for item in (info.get("formats") or [])
+            if isinstance(item, dict)
         ]
 
-        height_limit = max(allowed_limits, default=1440)
-
-        formats = info.get("formats") or []
-
         video_formats = [
-            item
-            for item in formats
-            if isinstance(item, dict)
-            and self._has_video(item)
-            and int(item["height"]) <= height_limit
+            item for item in formats if self._has_video(item)
         ]
 
         audio_formats = [
             item
             for item in formats
-            if isinstance(item, dict)
-            and self._has_audio(item)
-        ]
-
-        progressive_formats = [
-            item
-            for item in video_formats
             if self._has_audio(item)
+            and not self._has_video(item)
         ]
 
         if video_formats:
-            if self.ffmpeg_available and audio_formats:
+            if self.ffmpeg_available:
                 return (
-                    f"bestvideo[height<={height_limit}]"
-                    "+bestaudio/"
-                    f"best[height<={height_limit}]"
+                    f"bv*{height_filter}+ba/"
+                    f"b{height_filter}"
                 )
 
-            if progressive_formats:
-                return f"best[height<={height_limit}]"
-
-            if not self.ffmpeg_available and audio_formats:
-                raise yt_dlp.utils.DownloadError(
-                    "This link requires FFmpeg to combine separate "
-                    "video and audio streams."
-                )
-
-            return f"best[height<={height_limit}]"
-
-        has_video_formats = any(
-            isinstance(item, dict) and self._has_video(item)
-            for item in formats
-        )
-
-        if has_video_formats:
-            raise yt_dlp.utils.DownloadError(
-                "No video quality is available at or below "
-                f"{height_limit}p."
+            has_progressive_video = any(
+                self._has_audio(item)
+                for item in video_formats
             )
 
+            has_unknown_audio_metadata = any(
+                item.get("acodec") is None
+                for item in video_formats
+            )
+
+            has_split_video = any(
+                item.get("acodec") == "none"
+                for item in video_formats
+            )
+
+            if (
+                has_split_video
+                and not has_progressive_video
+                and not has_unknown_audio_metadata
+            ):
+                raise yt_dlp.utils.DownloadError(
+                    "This media requires FFmpeg to combine "
+                    "separate video and audio streams."
+                )
+
+            return f"b{height_filter}"
+
         if audio_formats:
-            return "bestaudio/best"
+            return "ba/b"
 
-        return "best"
+        if formats:
+            return f"b{height_filter}"
 
+        if self._has_video(info):
+            if self.ffmpeg_available:
+                return (
+                    f"bv*{height_filter}+ba/"
+                    f"b{height_filter}"
+                )
+
+            return f"b{height_filter}"
+
+        if self._has_audio(info):
+            return "ba/b"
+
+        return f"b{height_filter}"
     async def download(
         self,
         url: str,
@@ -228,6 +300,12 @@ class YTDLPEngine:
             format_selector = self._select_format(
                 info=info,
                 max_height=max_height,
+            )
+            height_limit = self._height_limit(max_height)
+
+            logger.debug(
+                "Selected adaptive format selector: %s",
+                format_selector,
             )
 
             output_template = str(
@@ -332,6 +410,8 @@ class YTDLPEngine:
                 )
 
             downloaded_files: list[DownloadedFile] = []
+            measured_heights: list[int] = []
+            resolution_rejected = False
 
             for file_path in files:
                 try:
@@ -341,6 +421,36 @@ class YTDLPEngine:
 
                 if size <= 0:
                     continue
+
+                media_type = self._detect_media_type(file_path)
+
+                if media_type == MediaType.VIDEO:
+                    actual_height = self._probe_video_height(file_path)
+                    reported_height = self._reported_video_height(
+                        downloaded_info
+                    )
+
+                    observed_height = (
+                        actual_height
+                        if actual_height is not None
+                        else reported_height
+                    )
+
+                    if observed_height is not None:
+                        if observed_height > height_limit:
+                            logger.warning(
+                                "Rejecting video above quality limit: "
+                                "%s (%sp > %sp)",
+                                file_path.name,
+                                observed_height,
+                                height_limit,
+                            )
+
+                            file_path.unlink(missing_ok=True)
+                            resolution_rejected = True
+                            continue
+
+                        measured_heights.append(observed_height)
 
                 if size > settings.max_file_size_bytes:
                     logger.warning(
@@ -365,11 +475,17 @@ class YTDLPEngine:
             if not downloaded_files:
                 self._cleanup_directory(job_directory)
 
+                error_message = (
+                    f"No video was within the {height_limit}p quality limit."
+                    if resolution_rejected
+                    else "No file was within the 50 MB limit."
+                )
+
                 return DownloadResult(
                     success=False,
                     status=DownloadStatus.REJECTED,
                     platform=platform,
-                    error="No file was within the 50 MB limit.",
+                    error=error_message,
                 )
 
             title = (
@@ -377,17 +493,11 @@ class YTDLPEngine:
                 or downloaded_files[0].title
             )
 
-            selected_height = downloaded_info.get("height")
-
-            if selected_height is None:
-                requested_formats = downloaded_info.get(
-                    "requested_formats"
-                ) or []
-
-                for item in requested_formats:
-                    if isinstance(item, dict) and item.get("height"):
-                        selected_height = item["height"]
-                        break
+            selected_height = (
+                max(measured_heights)
+                if measured_heights
+                else self._reported_video_height(downloaded_info)
+            )
 
             return DownloadResult(
                 success=True,
@@ -485,6 +595,85 @@ class YTDLPEngine:
                 platform=platform,
                 error=self._sanitize_error(str(exc)),
             )
+
+    @staticmethod
+    def _reported_video_height(
+        info: dict[str, Any],
+    ) -> int | None:
+        heights: list[int] = []
+
+        top_height = YTDLPEngine._height_value(info)
+
+        if top_height is not None:
+            heights.append(top_height)
+
+        for key in ("requested_formats", "requested_downloads"):
+            items = info.get(key) or []
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+
+                height = YTDLPEngine._height_value(item)
+
+                if height is None:
+                    nested = item.get("info_dict")
+
+                    if isinstance(nested, dict):
+                        height = YTDLPEngine._height_value(nested)
+
+                if height is not None:
+                    heights.append(height)
+
+        return max(heights) if heights else None
+
+    def _probe_video_height(self, file_path: Path) -> int | None:
+        """Read the actual video height when ffprobe is available."""
+        if not self.ffprobe_path:
+            return None
+
+        try:
+            result = subprocess.run(
+                [
+                    self.ffprobe_path,
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=height",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(file_path),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=12,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            logger.debug(
+                "Could not probe video dimensions: %s",
+                file_path,
+                exc_info=True,
+            )
+            return None
+
+        if result.returncode != 0:
+            return None
+
+        for line in result.stdout.splitlines():
+            try:
+                height = int(line.strip())
+            except (TypeError, ValueError):
+                continue
+
+            if height > 0:
+                return height
+
+        return None
 
     @staticmethod
     def _download_sync(

@@ -116,8 +116,7 @@ def test_format_selector_uses_ffmpeg_for_split_streams(
     selected = engine._select_format(info, 720)
 
     assert selected == (
-        "bestvideo[height<=720]+bestaudio/"
-        "best[height<=720]"
+        "bv*[height<=?720]+ba/b[height<=?720]"
     )
 
 
@@ -149,7 +148,7 @@ def test_progressive_format_works_without_ffmpeg(
         ]
     }
 
-    assert engine._select_format(info, 480) == "best[height<=480]"
+    assert engine._select_format(info, 480) == "b[height<=?480]"
 
 
 def test_format_selector_respects_selected_quality(
@@ -165,7 +164,7 @@ def test_format_selector_respects_selected_quality(
         ]
     }
 
-    assert engine._select_format(info, 720) == "best[height<=720]"
+    assert engine._select_format(info, 720) == "b[height<=?720]"
 
 
 def test_automatic_format_selection_is_capped_at_1440p(
@@ -180,7 +179,7 @@ def test_automatic_format_selection_is_capped_at_1440p(
         ]
     }
 
-    assert engine._select_format(info, None) == "best[height<=1440]"
+    assert engine._select_format(info, None) == "b[height<=?1440]"
 
 
 def test_audio_only_content_uses_audio_selector(
@@ -194,7 +193,7 @@ def test_audio_only_content_uses_audio_selector(
         ]
     }
 
-    assert engine._select_format(info, None) == "bestaudio/best"
+    assert engine._select_format(info, None) == "ba/b"
 
 
 def test_cleanup_result_removes_entire_job_directory(
@@ -358,3 +357,255 @@ def test_quality_keyboard_does_not_duplicate_saved_quality() -> None:
         button.callback_data == "quality_cancel"
         for button in buttons
     )
+
+# PART 52 UNIVERSAL FORMAT TESTS
+
+def test_pinterest_direct_format_without_codec_metadata(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = True
+
+    item = {
+        "format_id": "720p",
+        "url": "https://cdn.example/video.mp4",
+        "width": 1280,
+        "height": 720,
+    }
+
+    assert engine._has_video(item)
+    assert engine._select_format({"formats": [item]}, 720) == (
+        "bv*[height<=?720]+ba/b[height<=?720]"
+    )
+
+
+def test_instagram_video_version_without_codec_metadata(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = True
+
+    item = {
+        "format_id": "instagram-1080",
+        "ext": "mp4",
+        "url": "https://cdn.example/reel.mp4",
+        "width": 1080,
+        "height": 1080,
+    }
+
+    assert engine._has_video(item)
+    assert engine.available_qualities({"formats": [item]}) == [1080]
+
+
+def test_tiktok_video_codec_without_height_is_retained(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = False
+
+    info = {
+        "formats": [
+            {
+                "format_id": "tiktok-bitrate",
+                "ext": "mp4",
+                "vcodec": "h264",
+                "acodec": "aac",
+                "height": None,
+            }
+        ]
+    }
+
+    assert engine._has_video(info["formats"][0])
+    assert engine._select_format(info, 720) == "b[height<=?720]"
+
+
+def test_audio_only_format_is_not_detected_as_video(
+    engine: YTDLPEngine,
+) -> None:
+    item = audio_format()
+
+    assert not engine._has_video(item)
+    assert engine._has_audio(item)
+
+
+def test_height_limit_is_clamped_to_1440p(
+    engine: YTDLPEngine,
+) -> None:
+    assert engine._height_limit(None) == 1440
+    assert engine._height_limit(1440) == 1440
+    assert engine._height_limit(2160) == 1440
+    assert engine._height_limit(720) == 720
+
+
+def test_unknown_height_uses_optional_format_filter(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = True
+
+    info = {
+        "formats": [
+            {
+                "format_id": "unknown-height",
+                "vcodec": "h264",
+                "acodec": "none",
+                "height": None,
+            },
+            audio_format(),
+        ]
+    }
+
+    assert engine._height_value(info["formats"][0]) is None
+    assert engine._select_format(info, 1080) == (
+        "bv*[height<=?1080]+ba/b[height<=?1080]"
+    )
+
+
+def test_reported_video_height_reads_requested_formats(
+    engine: YTDLPEngine,
+) -> None:
+    info = {
+        "height": None,
+        "requested_formats": [
+            {"format_id": "video", "height": 1080},
+            {"format_id": "audio", "height": None},
+        ],
+    }
+
+    assert engine._reported_video_height(info) == 1080
+
+
+def test_reported_video_height_uses_highest_requested_stream(
+    engine: YTDLPEngine,
+) -> None:
+    info = {
+        "requested_formats": [
+            {"height": 720},
+            {"height": 1080},
+        ]
+    }
+
+    assert engine._reported_video_height(info) == 1080
+
+
+def test_ffprobe_reads_actual_video_height(
+    engine: YTDLPEngine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    import downloaders.ytdlp_engine as engine_module
+
+    media_file = tmp_path / "sample.mp4"
+    media_file.write_bytes(b"test")
+    engine.ffprobe_path = "ffprobe"
+
+    monkeypatch.setattr(
+        engine_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="1080\n",
+            stderr="",
+        ),
+    )
+
+    assert engine._probe_video_height(media_file) == 1080
+
+
+def test_ffprobe_failure_returns_none(
+    engine: YTDLPEngine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    import downloaders.ytdlp_engine as engine_module
+
+    media_file = tmp_path / "sample.mp4"
+    media_file.write_bytes(b"test")
+    engine.ffprobe_path = "ffprobe"
+
+    monkeypatch.setattr(
+        engine_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="invalid media",
+        ),
+    )
+
+    assert engine._probe_video_height(media_file) is None
+
+# PART 54 REAL YTDLP SELECTION TESTS
+
+def _run_real_format_selection(
+    selector: str,
+    formats: list[dict],
+) -> list[dict]:
+    with yt_dlp.YoutubeDL({
+        "quiet": True,
+        "no_warnings": True,
+    }) as ydl:
+        return ydl._select_formats(
+            formats,
+            ydl.build_format_selector(selector),
+        )
+
+
+def test_real_selector_accepts_pinterest_format_without_codecs(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = True
+
+    item = {
+        "format_id": "pinterest-direct",
+        "ext": "mp4",
+        "url": "https://cdn.example/pin.mp4",
+        "width": 1280,
+        "height": 720,
+    }
+
+    selector = engine._select_format({"formats": [item]}, 720)
+    selected = _run_real_format_selection(selector, [item])
+
+    assert selected
+    assert selected[0]["format_id"] == "pinterest-direct"
+
+
+def test_real_selector_accepts_instagram_video_without_audio_codec(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = True
+
+    item = {
+        "format_id": "instagram-video-version",
+        "ext": "mp4",
+        "url": "https://cdn.example/reel.mp4",
+        "width": 1080,
+        "height": 1080,
+        "acodec": "none",
+    }
+
+    selector = engine._select_format({"formats": [item]}, 1080)
+    selected = _run_real_format_selection(selector, [item])
+
+    assert selected
+    assert selected[0]["format_id"] == "instagram-video-version"
+
+
+def test_real_selector_accepts_tiktok_format_without_height(
+    engine: YTDLPEngine,
+) -> None:
+    engine.ffmpeg_available = False
+
+    item = {
+        "format_id": "tiktok-progressive",
+        "ext": "mp4",
+        "url": "https://cdn.example/tiktok.mp4",
+        "vcodec": "h264",
+        "acodec": "aac",
+        "height": None,
+    }
+
+    selector = engine._select_format({"formats": [item]}, 720)
+    selected = _run_real_format_selection(selector, [item])
+
+    assert selected
+    assert selected[0]["format_id"] == "tiktok-progressive"
